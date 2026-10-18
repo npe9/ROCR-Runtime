@@ -42,6 +42,7 @@
 
 #include "core/inc/default_signal.h"
 #include "core/util/timer.h"
+#include "core/util/lithe_coop.h"
 
 #if defined(__i386__) || defined(__x86_64__)
 #include <mwaitxintrin.h>
@@ -139,6 +140,10 @@ hsa_signal_value_t BusyWaitSignal::WaitRelaxed(hsa_signal_condition_t condition,
       return hsa_signal_value_t(value);
     }
 
+    if (os::LitheCoop()) {  // Lithe: no event to sleep on; poll between other contexts' turns
+      os::LitheYield();
+      continue;
+    }
     if (time - start_time > kMaxElapsed) {
       os::uSleep(20);
 #if defined(__i386__) || defined(__x86_64__)

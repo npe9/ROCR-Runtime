@@ -58,9 +58,11 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <chrono>
 #include <utility>
 #include <semaphore.h>
 #include "core/inc/runtime.h"
+#include "core/util/lithe_coop.h"
 #if defined(__i386__) || defined(__x86_64__)
 #include <cpuid.h>
 #endif
@@ -100,6 +102,14 @@ class os_thread {
 
     args->entry_args = threadArgument;
     args->entry_function = function;
+    // Lithe (lithe_coop.h): created from a Lithe context, the thread becomes a Lithe progress context
+    // in the root scheduler instead of a pthread. ROCR_LITHE_THREADS=0 keeps pthreads.
+    if (LitheCoop() && lithe_fork_join_context_create_progress && LitheThreadsEnabled()) {
+      lithe_args = *args;
+      size_t ss = stackSize ? AlignUp(Max(uint(1 << 20), stackSize), 4096) : (size_t(1) << 20);
+      lithe_ctx = lithe_fork_join_context_create_progress(ss, LitheTrampoline, this);
+      if (lithe_ctx != nullptr) return;  // priority / affinity do not apply to a context
+    }
 
     pthread_attr_t attrib;
     err = pthread_attr_init(&attrib);
@@ -169,6 +179,10 @@ class os_thread {
   }
 
   os_thread(os_thread&& rhs) {
+    lithe_args = rhs.lithe_args;
+    lithe_ctx = rhs.lithe_ctx;
+    rhs.lithe_ctx = nullptr;
+    lithe_done.store(rhs.lithe_done.load());
     thread = rhs.thread;
     lock = rhs.lock;
     state = int(rhs.state);
@@ -180,16 +194,38 @@ class os_thread {
 
   ~os_thread() {
     if (lock != nullptr) DestroyMutex(lock);
+    if (lithe_ctx != nullptr) return;  // a context is reclaimed by its scheduler when it exits
     if ((state == RUNNING) && (thread != 0)) {
       int err = pthread_detach(thread);
       if (err != 0) fprintf(stderr, "pthread_detach failed: %s\n", strerror(err));
     }
   }
 
-  bool Valid() { return (lock != nullptr) && (thread != 0); }
+  bool Valid() { return (lock != nullptr) && (thread != 0 || lithe_ctx != nullptr); }
 
   bool Wait() {
     if (state == FINISHED) return true;
+    if (lithe_ctx != nullptr) {
+      // Join a Lithe context: yield while waiting when the caller is a Lithe context; otherwise
+      // (library destructors at exit, GAPS B13) wait a bounded time for a hart to finish it.
+      if (LitheCoop()) {
+        while (!lithe_done.load(std::memory_order_acquire)) LitheYield();
+      } else {
+        const char* e = getenv("ROCR_LITHE_JOIN_TIMEOUT_MS");
+        long budget_ms = e ? atol(e) : 2000;
+        auto t0 = std::chrono::steady_clock::now();
+        while (!lithe_done.load(std::memory_order_acquire)) {
+          sched_yield();
+          if (std::chrono::steady_clock::now() - t0 > std::chrono::milliseconds(budget_ms)) {
+            fprintf(stderr, "[ROCr-Lithe] context thread did not finish within %ld ms at join\n",
+                    budget_ms);
+            return false;
+          }
+        }
+      }
+      state = FINISHED;
+      return true;
+    }
     AcquireMutex(lock);
     if (state == FINISHED) {
       ReleaseMutex(lock);
@@ -203,9 +239,21 @@ class os_thread {
   }
 
  private:
+  static void LitheTrampoline(void* p) {
+    os_thread* self = static_cast<os_thread*>(p);
+    self->lithe_args.entry_function(self->lithe_args.entry_args);
+    self->lithe_done.store(true, std::memory_order_release);
+  }
+  static bool LitheThreadsEnabled() {
+    const char* e = getenv("ROCR_LITHE_THREADS");
+    return !(e && *e && atoi(e) == 0);
+  }
   pthread_t thread;
   Mutex lock;
   std::atomic<int> state;
+  ThreadArgs lithe_args{};   // the pthread path hands its ThreadArgs to the trampoline
+  void* lithe_ctx = nullptr;
+  std::atomic<bool> lithe_done{false};
   enum { FINISHED = 0, RUNNING = 1 };
 };
 
@@ -405,7 +453,10 @@ void Sleep(int delay_in_millisec) { usleep(delay_in_millisec * 1000); }
 
 void uSleep(int delayInUs) { usleep(delayInUs); }
 
-void YieldThread() { sched_yield(); }
+void YieldThread() {
+  if (LitheCoop()) LitheYield();  // a Lithe context yields its hart, not the kernel thread
+  else sched_yield();
+}
 
 Thread CreateThread(ThreadEntry function, void* threadArgument, uint stackSize) {
   os_thread* result = new os_thread(function, threadArgument, stackSize);

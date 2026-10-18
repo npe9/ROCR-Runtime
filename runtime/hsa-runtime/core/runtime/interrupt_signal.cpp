@@ -41,6 +41,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "core/inc/interrupt_signal.h"
+#include "core/util/lithe_coop.h"
 #include "core/inc/runtime.h"
 #include "core/util/timer.h"
 #include "core/util/locks.h"
@@ -213,6 +214,10 @@ hsa_signal_value_t InterruptSignal::WaitRelaxed(
     }
 
     if (wait_hint == HSA_WAIT_STATE_ACTIVE) {
+      if (os::LitheCoop()) {  // Lithe: poll between other contexts' turns instead of spinning
+        os::LitheYield();
+        continue;
+      }
 #if defined(__i386__) || defined(__x86_64__)
       if (g_use_mwaitx) {
         _mm_mwaitx(0, 0, 0);
@@ -224,6 +229,10 @@ hsa_signal_value_t InterruptSignal::WaitRelaxed(
 
     if (time - start_time < kMaxElapsed) {
       //  os::uSleep(20);
+      if (os::LitheCoop()) {
+        os::LitheYield();
+        continue;
+      }
 #if defined(__i386__) || defined(__x86_64__)
       if (g_use_mwaitx) {
         _mm_mwaitx(0, 60000, MWAITX_ECX_TIMER_ENABLE);
@@ -238,7 +247,8 @@ hsa_signal_value_t InterruptSignal::WaitRelaxed(
     uint64_t ct=timer::duration_cast<std::chrono::milliseconds>(
       time_remaining).count();
     wait_ms = (ct>0xFFFFFFFEu) ? 0xFFFFFFFEu : ct;
-    hsaKmtWaitOnEvent_Ext(event_, wait_ms, &event_age);
+    // Lithe: the KFD wait runs on a parlib helper thread; this context is parked meanwhile.
+    os::LitheBlocking([&]() { hsaKmtWaitOnEvent_Ext(event_, wait_ms, &event_age); });
   }
 }
 

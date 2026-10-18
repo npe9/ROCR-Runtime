@@ -59,6 +59,7 @@
 #include <chrono>
 
 #include "core/inc/runtime.h"
+#include "core/util/lithe_coop.h"
 #include "core/inc/hsa_table_interface.h"
 
 #if defined(HSA_ROCPROFILER_REGISTER) && HSA_ROCPROFILER_REGISTER > 0
