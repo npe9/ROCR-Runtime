@@ -208,7 +208,7 @@ class os_thread {
     if (lithe_ctx != nullptr) {
       // Join a Lithe context: yield while waiting when the caller is a Lithe context; otherwise
       // (library destructors at exit, GAPS B13) wait a bounded time for a hart to finish it.
-      if (LitheCoop()) {
+      if (LitheLockCoop()) {
         while (!lithe_done.load(std::memory_order_acquire)) LitheYield();
       } else {
         const char* e = getenv("ROCR_LITHE_JOIN_TIMEOUT_MS");
@@ -410,6 +410,13 @@ Semaphore CreateSemaphore() {
 }
 
 bool WaitSemaphore(Semaphore sem) {
+  if (LitheLockCoop()) {  // Lithe lock: never block the hart in sem_wait (HybridMutex's slow path)
+    while (sem_trywait(*(sem_t**)&sem)) {
+      if (errno == EAGAIN) LitheYield();
+      else if (errno != EINTR) return false;
+    }
+    return true;
+  }
   while(sem_wait(*(sem_t**)&sem))
     if (errno != EINTR) return false;
 
@@ -437,6 +444,15 @@ bool TryAcquireMutex(Mutex lock) {
 }
 
 bool AcquireMutex(Mutex lock) {
+  // Lithe lock (KernelMutex): a Lithe context must not block its hart on a lock held by another
+  // context that is parked or yielded; try, and yield between tries. Kernel threads lock normally.
+  // A normal glibc mutex does not check the unlocking thread, so a context that resumes on another
+  // vcore can still release it.
+  if (LitheCoop()) {
+    int r;
+    while ((r = pthread_mutex_trylock(*(pthread_mutex_t**)&lock)) == EBUSY) LitheYield();
+    return r == 0;
+  }
   return pthread_mutex_lock(*(pthread_mutex_t**)&lock) == 0;
 }
 
@@ -564,6 +580,24 @@ int WaitForOsEvent(EventHandle event, unsigned int milli_seconds) {
   }
 
   EventDescriptor* eventDescrp = reinterpret_cast<EventDescriptor*>(event);
+  if (LitheLockCoop()) {
+    // Lithe event wait (KernelEvent): poll the state under the event's mutex, yielding between polls,
+    // instead of blocking the hart in pthread_cond_timedwait. Same return codes: 0 set, 1 not set for a
+    // zero timeout, 0x14003 timeout.
+    auto t0 = std::chrono::steady_clock::now();
+    for (;;) {
+      while (pthread_mutex_trylock(&eventDescrp->mutex) == EBUSY) LitheYield();
+      bool set = eventDescrp->state;
+      if (set && eventDescrp->auto_reset) eventDescrp->state = false;
+      pthread_mutex_unlock(&eventDescrp->mutex);
+      if (set) return 0;
+      if (milli_seconds == 0) return 1;
+      if (milli_seconds != 0xFFFFFFFF &&
+          std::chrono::steady_clock::now() - t0 >= std::chrono::milliseconds(milli_seconds))
+        return 0x14003;
+      LitheYield();
+    }
+  }
   // Event wait time is 0 and state is non-signaled, return directly
   if (milli_seconds == 0) {
     int tmp_ret = pthread_mutex_trylock(&eventDescrp->mutex);
@@ -737,6 +771,11 @@ bool TryAcquireSharedMutex(SharedMutex lock) {
 }
 
 bool AcquireSharedMutex(SharedMutex lock) {
+  if (LitheLockCoop()) {  // Lithe lock (KernelSharedMutex, exclusive)
+    int r;
+    while ((r = pthread_rwlock_trywrlock(*(pthread_rwlock_t**)&lock)) == EBUSY) LitheYield();
+    return r == 0;
+  }
   int err = pthread_rwlock_wrlock(*(pthread_rwlock_t**)&lock);
   return err == 0;
 }
@@ -755,6 +794,11 @@ bool TrySharedAcquireSharedMutex(SharedMutex lock) {
 }
 
 bool SharedAcquireSharedMutex(SharedMutex lock) {
+  if (LitheLockCoop()) {  // Lithe lock (KernelSharedMutex, shared)
+    int r;
+    while ((r = pthread_rwlock_tryrdlock(*(pthread_rwlock_t**)&lock)) == EBUSY) LitheYield();
+    return r == 0;
+  }
   int err = pthread_rwlock_rdlock(*(pthread_rwlock_t**)&lock);
   return err == 0;
 }

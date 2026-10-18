@@ -40,6 +40,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "core/util/lithe_coop.h"
 #include "core/inc/amd_blit_sdma.h"
 
 #include <algorithm>
@@ -344,7 +345,7 @@ hsa_status_t BlitSdma<RingIndexTy, HwIndexMonotonic, SizeToCountOffset, useGCR>:
   char* command_addr;
   uint64_t prior_bytes, post_bytes;
   {
-    std::lock_guard<std::mutex> lock(reservation_lock_);
+    std::lock_guard<rocr::os::LitheMutex> lock(reservation_lock_);
     command_addr = AcquireWriteAddress(total_command_size + pad_size, curr_index);
     if (command_addr == nullptr) {
       return HSA_STATUS_ERROR_OUT_OF_RESOURCES;

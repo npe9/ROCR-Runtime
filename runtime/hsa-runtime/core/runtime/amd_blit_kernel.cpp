@@ -40,6 +40,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "core/util/lithe_coop.h"
 #include "core/inc/amd_blit_kernel.h"
 
 #include <algorithm>
@@ -974,7 +975,7 @@ hsa_status_t BlitKernel::Initialize(const core::Agent& agent) {
 }
 
 hsa_status_t BlitKernel::Destroy(const core::Agent& agent) {
-  std::lock_guard<std::mutex> guard(lock_);
+  std::lock_guard<rocr::os::LitheMutex> guard(lock_);
 
   const AMD::GpuAgent& gpuAgent = static_cast<const AMD::GpuAgent&>(agent);
 
@@ -997,7 +998,7 @@ hsa_status_t BlitKernel::Destroy(const core::Agent& agent) {
 hsa_status_t BlitKernel::SubmitLinearCopyCommand(void* dst, const void* src,
                                                  size_t size) {
   // Protect completion_signal_.
-  std::lock_guard<std::mutex> guard(lock_);
+  std::lock_guard<rocr::os::LitheMutex> guard(lock_);
 
   HSA::hsa_signal_store_relaxed(completion_signal_, 1);
 
@@ -1031,7 +1032,7 @@ hsa_status_t BlitKernel::SubmitLinearCopyCommand(
 
   uint64_t write_index;
   {
-    std::lock_guard<std::mutex> lock(reservation_lock_);
+    std::lock_guard<rocr::os::LitheMutex> lock(reservation_lock_);
     write_index = AcquireWriteIndex(total_num_packet);
     RecordBlitHistory(size, write_index + total_num_packet - 1);
   }
@@ -1165,7 +1166,7 @@ hsa_status_t BlitKernel::SubmitLinearCopyCommand(
 
 hsa_status_t BlitKernel::SubmitLinearFillCommand(void* ptr, uint32_t value,
                                                  size_t count) {
-  std::lock_guard<std::mutex> guard(lock_);
+  std::lock_guard<rocr::os::LitheMutex> guard(lock_);
 
   // Reject misaligned base address.
   if ((uintptr_t(ptr) & 0x3) != 0) {
@@ -1195,7 +1196,7 @@ hsa_status_t BlitKernel::SubmitLinearFillCommand(void* ptr, uint32_t value,
 
   uint64_t write_index;
   {
-    std::lock_guard<std::mutex> lock(reservation_lock_);
+    std::lock_guard<rocr::os::LitheMutex> lock(reservation_lock_);
     write_index = AcquireWriteIndex(1);
     RecordBlitHistory(fill_size, write_index);
   }

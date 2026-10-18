@@ -40,6 +40,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "core/util/lithe_coop.h"
 #include "core/inc/amd_gpu_agent.h"
 
 #include <algorithm>
@@ -3123,7 +3124,7 @@ void GpuAgent::PcSamplingThread() {
     } while (true);
     HSA::hsa_signal_store_screlease(done_sig[which_buffer], 1);
 
-    std::lock_guard<std::mutex> lock(ht_data.host_buffer_mutex);
+    std::lock_guard<rocr::os::LitheMutex> lock(ht_data.host_buffer_mutex);
     if (PcSamplingFlushHostTrapDeviceBuffers(session) != HSA_STATUS_SUCCESS)
       goto thread_exit;
 
@@ -3203,7 +3204,7 @@ hsa_status_t GpuAgent::PcSamplingFlush(pcs::PcsRuntime::PcSamplingSession& sessi
   size_t bytes_before_wrap;
   size_t bytes_after_wrap;
 
-  std::lock_guard<std::mutex> lock(ht_data.host_buffer_mutex);
+  std::lock_guard<rocr::os::LitheMutex> lock(ht_data.host_buffer_mutex);
   if (PcSamplingFlushHostTrapDeviceBuffers(session) != HSA_STATUS_SUCCESS)
     return HSA_STATUS_ERROR;
 

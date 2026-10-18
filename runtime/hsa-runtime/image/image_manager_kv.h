@@ -43,6 +43,7 @@
 #ifndef HSA_RUNTIME_EXT_IMAGE_IMAGE_MANAGER_KV_H
 #define HSA_RUNTIME_EXT_IMAGE_IMAGE_MANAGER_KV_H
 
+#include "core/util/lithe_coop.h"
 #include "addrlib/inc/addrinterface.h"
 #include "blit_kernel.h"
 #include "image_lut_kv.h"
@@ -159,7 +160,7 @@ class ImageManagerKv : public ImageManager {
 
   uintptr_t local_memory_base_address_;
 
-  std::mutex lock_;
+  rocr::os::LitheMutex lock_;
 
  private:
   ImageLutKv image_lut_;

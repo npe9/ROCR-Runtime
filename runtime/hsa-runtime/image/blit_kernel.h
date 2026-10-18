@@ -42,6 +42,7 @@
 
 #ifndef HSA_RUNTIME_EXT_IMAGE_BLIT_KERNEL_H
 #define HSA_RUNTIME_EXT_IMAGE_BLIT_KERNEL_H
+#include "core/util/lithe_coop.h"
 #include <assert.h>
 #include <atomic>
 #include <mutex>
@@ -155,7 +156,7 @@ class BlitKernel {
   // Mapping of ISA and kernel executable.
   std::unordered_map<uint64_t, hsa_executable_t> code_executable_map_;
 
-  std::mutex lock_;
+  rocr::os::LitheMutex lock_;
 
   DISALLOW_COPY_AND_ASSIGN(BlitKernel);
 

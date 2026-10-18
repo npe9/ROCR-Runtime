@@ -43,6 +43,7 @@
 #ifndef HSA_RUNTIME_CORE_INC_AMD_BLIT_KERNEL_H_
 #define HSA_RUNTIME_CORE_INC_AMD_BLIT_KERNEL_H_
 
+#include "core/util/lithe_coop.h"
 #include <map>
 #include <mutex>
 #include <vector>
@@ -212,13 +213,13 @@ class BlitKernel : public core::Blit {
   uint64_t last_queued_;
 
   /// Orders command indices and bytes_queued_ updates
-  std::mutex reservation_lock_;
+  rocr::os::LitheMutex reservation_lock_;
 
   /// Search resume index
   std::atomic<uint64_t> pending_search_index_;
 
   /// Lock to synchronize access to kernarg_ and completion_signal_
-  std::mutex lock_;
+  rocr::os::LitheMutex lock_;
 
   /// Number of CUs on the underlying agent.
   int num_cus_;
