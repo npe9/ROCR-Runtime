@@ -59,6 +59,7 @@
 #include <chrono>
 
 #include "core/inc/runtime.h"
+#include "core/util/lithe_coop.h"
 #include "core/inc/hsa_table_interface.h"
 
 #if defined(HSA_ROCPROFILER_REGISTER) && HSA_ROCPROFILER_REGISTER > 0
@@ -1598,7 +1599,11 @@ void Runtime::AsyncEventsLoop(void* _eventsInfo) {
     constexpr uint32_t wait_ms = 0xFFFFFFFEu;
     HsaEvent** end = std::unique(&hsa_events[0], &hsa_events[0] + unique_evts);
     unique_evts = uint32_t(end - &hsa_events[0]);
-    hsaKmtWaitOnMultipleEvents_Ext(&hsa_events[0], unique_evts, false, wait_ms, &event_age[0]);
+    // Lithe: when this loop is a Lithe context (created inside a Lithe scheduler, os::CreateThread)
+    // the KFD sleep runs on a parlib helper thread and the context is parked, not its hart.
+    os::LitheBlocking([&]() {
+      hsaKmtWaitOnMultipleEvents_Ext(&hsa_events[0], unique_evts, false, wait_ms, &event_age[0]);
+    });
   };
 
   while (!async_events_control_.exit) {
