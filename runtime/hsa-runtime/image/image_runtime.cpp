@@ -41,6 +41,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #define NOMINMAX
+#include "core/util/lithe_coop.h"
 #include "image_runtime.h"
 
 #include <assert.h>
@@ -154,7 +155,7 @@ ImageRuntime* ImageRuntime::instance() {
   ImageRuntime* instance = get_instance().load(std::memory_order_acquire);
   if (instance == NULL) {
     // Protect the initialization from multi threaded access.
-    std::lock_guard<std::mutex> lock(instance_mutex());
+    std::lock_guard<rocr::os::LitheMutex> lock(instance_mutex());
 
     // Make sure we are not initializing it twice.
     instance = get_instance().load(std::memory_order_relaxed);

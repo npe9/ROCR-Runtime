@@ -41,6 +41,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #define NOMINMAX
+#include "core/util/lithe_coop.h"
 #include "image_manager_kv.h"
 
 #include <assert.h>
@@ -962,7 +963,7 @@ size_t ImageManagerKv::CalWorkingSizeBytes(hsa_ext_image_geometry_t geometry,
 BlitQueue& ImageManagerKv::BlitQueueInit() {
   if (blit_queue_.queue_ == NULL) {
     // Queue is a precious resource, so only create it when it is needed.
-    std::lock_guard<std::mutex> lock(lock_);
+    std::lock_guard<rocr::os::LitheMutex> lock(lock_);
     if (blit_queue_.queue_ == NULL) {
       // Create the kernel queue.
       blit_queue_.cached_index_ = 0;

@@ -43,6 +43,7 @@
 #ifndef HSA_RUNTIME_PCS_RUNTIME_H
 #define HSA_RUNTIME_PCS_RUNTIME_H
 
+#include "core/util/lithe_coop.h"
 #include <atomic>
 #include <map>
 #include <mutex>
@@ -158,10 +159,10 @@ class PcsRuntime {
     static std::atomic<PcsRuntime*>* instance_ = new std::atomic<PcsRuntime*>();
     return *instance_;
   }
-  static __forceinline std::mutex& instance_mutex() {
+  static __forceinline rocr::os::LitheMutex& instance_mutex() {
     // This allocation is meant to last until the last thread has exited.
     // It is intentionally not freed.
-   static std::mutex* instance_mutex_ = new std::mutex();
+   static rocr::os::LitheMutex* instance_mutex_ = new rocr::os::LitheMutex();
    return *instance_mutex_;
 }
   // Map of pc sampling sessions indexed by hsa_ven_amd_pcs_t handle

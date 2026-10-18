@@ -40,6 +40,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "core/util/lithe_coop.h"
 #include "blit_kernel.h"
 
 #if (defined(WIN32) || defined(_WIN32))
@@ -173,7 +174,7 @@ hsa_status_t BlitKernel::BuildBlitCode(
     return status;
   }
 
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<rocr::os::LitheMutex> lock(lock_);
 
   for (std::pair<uint64_t, hsa_executable_t> pair : code_executable_map_) {
     bool isa_compatible = false;

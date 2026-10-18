@@ -45,6 +45,7 @@
 #ifndef HSA_RUNTIME_CORE_INC_AMD_GPU_AGENT_H_
 #define HSA_RUNTIME_CORE_INC_AMD_GPU_AGENT_H_
 
+#include "core/util/lithe_coop.h"
 #include <vector>
 #include <list>
 #include <map>
@@ -779,7 +780,7 @@ class GpuAgent : public GpuAgentInt {
     uint8_t* host_write_ptr;
     uint8_t* host_read_ptr;
     size_t lost_sample_count;
-    std::mutex host_buffer_mutex;
+    rocr::os::LitheMutex host_buffer_mutex;
 
     uint32_t which_buffer;
     uint64_t* old_val;

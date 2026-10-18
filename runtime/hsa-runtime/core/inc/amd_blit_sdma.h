@@ -43,6 +43,7 @@
 #ifndef HSA_RUNTIME_CORE_INC_AMD_BLIT_SDMA_H_
 #define HSA_RUNTIME_CORE_INC_AMD_BLIT_SDMA_H_
 
+#include "core/util/lithe_coop.h"
 #include <mutex>
 #include <stdint.h>
 #include <vector>
@@ -236,7 +237,7 @@ class BlitSdma : public BlitSdmaBase {
   // The data_ index corresponding to a command queue index is the first uint64_t index which begins
   // in the packet area.  All packets have a header & at least one address so must be larger than 12
   // bytes, thus this index always exists.
-  std::mutex reservation_lock_;
+  rocr::os::LitheMutex reservation_lock_;
   uint64_t bytes_queued_;
   class {
    public:
