@@ -108,7 +108,12 @@ class os_thread {
     if (LitheCoop() && lithe_fork_join_context_create_progress && LitheThreadsEnabled()) {
       size_t ss = stackSize ? AlignUp(Max(uint(1 << 20), stackSize), 4096) : (size_t(1) << 20);
       lithe_ctx = lithe_fork_join_context_create_progress(ss, LitheTrampoline, this);
-      if (lithe_ctx != nullptr) return;  // priority / affinity do not apply to a context
+      if (lithe_ctx != nullptr) {
+        // An application whose own scheduler is the root would otherwise wait for this
+        // runtime-lifetime context in join_all (the GPU probes needed a separate root).
+        if (lithe_fork_join_context_set_daemon) lithe_fork_join_context_set_daemon(lithe_ctx);
+        return;  // priority / affinity do not apply to a context
+      }
     }
 
     pthread_attr_t attrib;
